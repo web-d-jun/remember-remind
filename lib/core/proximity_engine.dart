@@ -158,10 +158,14 @@ class ProximityEngine {
     }
 
     // 4) 근처를 지나가는 중이면 접근 알림을 보낸다.
+    //    [오늘은 그만]으로 미뤄둔 물건은 빼고, 남는 게 없으면 알리지 않는다.
     final tooFast = position.speed > config.maxApproachSpeed;
-    if (!tooFast && _canNotifyApproach(nearest.store, now)) {
+    final awake = nearest.items.where((i) => !i.isSnoozed(now)).toList();
+    if (!tooFast &&
+        awake.isNotEmpty &&
+        _canNotifyApproach(nearest.store, now)) {
       _markApproached(nearest.store, now);
-      events.add(ApproachEvent(nearest.store, nearest.items));
+      events.add(ApproachEvent(nearest.store, awake));
     }
     return events;
   }

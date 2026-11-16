@@ -118,8 +118,8 @@ class LocationTracker extends ChangeNotifier {
           distanceFilter: distanceFilter,
           intervalDuration: const Duration(seconds: 10),
           foregroundNotificationConfig: const ForegroundNotificationConfig(
-            notificationTitle: '살 물건을 기억하고 있어요',
-            notificationText: '근처에 매장이 있으면 알려드릴게요',
+            notificationTitle: '까마귀가 기억하고 있어요',
+            notificationText: '근처에 살 곳이 있으면 귀띔해 줄게요',
             notificationChannelName: '위치 추적',
             enableWakeLock: true,
           ),

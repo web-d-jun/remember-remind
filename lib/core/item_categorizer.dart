@@ -53,6 +53,13 @@ class ItemCategorizer {
   /// 모르는 물건이면 가장 범용적인 편의점·마트를 추천한다.
   static const Set<StoreCategory> fallback = {_c, _m};
 
+  /// 사전에 있는 물건 이름들. 음성 인식이 이 단어들을 더 잘 알아듣게 힌트로 준다.
+  static Iterable<String> get knownNames => _dictionary.keys;
+
+  /// 사전에 정확히 있는 물건 이름인지.
+  bool isKnown(String name) =>
+      _dictionary.containsKey(name.replaceAll(' ', ''));
+
   Set<StoreCategory> suggest(String itemName) {
     final name = itemName.replaceAll(' ', '');
     if (name.isEmpty) return const {};

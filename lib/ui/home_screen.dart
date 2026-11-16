@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
+import 'package:quick_actions/quick_actions.dart';
 
 import '../core/proximity_engine.dart';
 import '../models/shopping_item.dart';
+import '../data/photo_store.dart';
 import '../services/location_tracker.dart';
 import '../state/shopping_list.dart';
 import 'add_item_sheet.dart';
@@ -22,7 +24,29 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _setUpShortcuts();
   }
+
+  /// 앱 아이콘을 길게 누르면 바로 말하거나 찍을 수 있게 한다.
+  /// 잠금 해제 → 앱 열기 → 버튼 찾기 단계를 건너뛴다.
+  void _setUpShortcuts() {
+    const quickActions = QuickActions();
+    quickActions.initialize((type) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        // 이미 열린 시트가 있으면 닫고 새로 연다.
+        Navigator.of(context).popUntil((route) => route.isFirst);
+        _add(type == _photoShortcut ? AddStart.photo : AddStart.voice);
+      });
+    });
+    quickActions.setShortcutItems(const [
+      ShortcutItem(type: _voiceShortcut, localizedTitle: '말로 기억하기'),
+      ShortcutItem(type: _photoShortcut, localizedTitle: '사진으로 기억하기'),
+    ]);
+  }
+
+  static const _voiceShortcut = 'add_voice';
+  static const _photoShortcut = 'add_photo';
 
   @override
   void dispose() {
@@ -32,33 +56,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 설정 앱에서 권한을 바꾸고 돌아왔을 수 있다.
     if (state == AppLifecycleState.resumed) {
+      // 앱이 꺼져 있을 때 알림 버튼으로 바뀐 목록을 다시 읽는다.
+      context.read<ShoppingList>().reload();
+      // 설정 앱에서 권한을 바꾸고 돌아왔을 수 있다.
       context.read<LocationTracker>().start();
     }
   }
 
-  Future<void> _add() async {
-    final draft = await AddItemSheet.show(context);
-    if (draft == null || !mounted) return;
-    await context.read<ShoppingList>().add(
-      draft.name,
-      draft.categories,
-      important: draft.important,
-    );
+  Future<void> _add([AddStart start = AddStart.text]) async {
+    final list = context.read<ShoppingList>();
+    final messenger = ScaffoldMessenger.of(context);
+    final added = await AddItemSheet.show(context, start: start);
+    if (added.isEmpty || !mounted) return;
+    // 확인 없이 저장했으니, 잘못 들었으면 바로 되돌릴 수 있게 한다.
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text('${added.map((i) => i.name).join(', ')} 기억했어요'),
+          action: SnackBarAction(
+            label: '되돌리기',
+            onPressed: () => list.removeAll(added),
+          ),
+        ),
+      );
   }
 
-  Future<void> _edit(ShoppingItem item) async {
-    final draft = await AddItemSheet.show(context, initial: item);
-    if (draft == null || !mounted) return;
-    await context.read<ShoppingList>().update(
-      item.copyWith(
-        name: draft.name,
-        categories: draft.categories,
-        important: draft.important,
-      ),
-    );
-  }
+  Future<void> _edit(ShoppingItem item) =>
+      AddItemSheet.show(context, initial: item);
 
   @override
   Widget build(BuildContext context) {
@@ -68,14 +94,37 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final purchased = list.purchased;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('빠짐없이')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _add,
-        icon: const Icon(Icons.add),
-        label: const Text('살 물건'),
+      appBar: AppBar(title: const Text('까마귀')),
+      // 생각난 순간 바로 저장할 수 있게, 말하기와 사진 찍기를 한 번에 연다.
+      // 생각난 순간 바로 저장: 말하기가 가장 크고, 사진·글자는 작게 둔다.
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton.small(
+            heroTag: 'text',
+            tooltip: '글자로 기억하기',
+            onPressed: () => _add(AddStart.text),
+            child: const Icon(Icons.keyboard_outlined),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.small(
+            heroTag: 'photo',
+            tooltip: '사진으로 기억하기',
+            onPressed: () => _add(AddStart.photo),
+            child: const Icon(Icons.photo_camera_outlined),
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton.extended(
+            heroTag: 'voice',
+            onPressed: () => _add(AddStart.voice),
+            icon: const Icon(Icons.mic),
+            label: const Text('말로 기억하기'),
+          ),
+        ],
       ),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 96),
+        padding: const EdgeInsets.only(bottom: 200),
         children: [
           _InStoreBanner(tracker: tracker, pending: pending),
           _StatusCard(tracker: tracker),
@@ -241,17 +290,78 @@ class _ItemTile extends StatelessWidget {
           value: !item.isPending,
           onChanged: (_) => list.togglePurchased(item),
         ),
-        title: Text(
-          item.name,
+        title: Text.rich(
+          TextSpan(
+            children: [
+              if (item.important && item.isPending)
+                WidgetSpan(
+                  alignment: PlaceholderAlignment.middle,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Icon(
+                      Icons.star,
+                      size: 18,
+                      color: theme.colorScheme.tertiary,
+                    ),
+                  ),
+                ),
+              TextSpan(text: item.name),
+            ],
+          ),
           style: item.isPending
               ? null
               : const TextStyle(decoration: TextDecoration.lineThrough),
         ),
         subtitle: Text(item.categories.map((c) => c.label).join(' · ')),
-        trailing: item.important && item.isPending
-            ? Icon(Icons.star, color: theme.colorScheme.tertiary)
-            : null,
+        trailing: item.photo == null
+            ? null
+            : _PhotoThumb(photo: item.photo!, title: item.name),
         onTap: onEdit,
+      ),
+    );
+  }
+}
+
+/// 목록의 작은 사진. 누르면 크게 보여준다. (매장에서 "어떤 제품이었지?" 할 때)
+class _PhotoThumb extends StatelessWidget {
+  const _PhotoThumb({required this.photo, required this.title});
+
+  final String photo;
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    final file = context.read<PhotoStore>().fileOf(photo);
+    return GestureDetector(
+      onTap: () => showDialog<void>(
+        context: context,
+        builder: (context) => Dialog(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Image.file(file, fit: BoxFit.contain),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  title,
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Image.file(
+          file,
+          width: 44,
+          height: 44,
+          fit: BoxFit.cover,
+          cacheWidth: 132,
+          errorBuilder: (_, _, _) => const SizedBox(width: 44, height: 44),
+        ),
       ),
     );
   }
@@ -273,11 +383,11 @@ class _EmptyState extends StatelessWidget {
             color: theme.colorScheme.outline,
           ),
           const SizedBox(height: 16),
-          Text('살 물건을 적어두세요', style: theme.textTheme.titleMedium),
+          Text('까먹어도 마음 놓아, 귀띔해 줄게', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
           Text(
-            '살 수 있는 매장 근처를 지나면 알려드리고,\n'
-            '안 사고 매장을 나서면 다시 알려드릴게요.',
+            '살 물건을 적어두면, 살 수 있는 곳을 지날 때 알려주고\n'
+            '안 사고 나서면 집에 가기 전에 붙잡아 줄게요.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,

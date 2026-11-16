@@ -1,4 +1,6 @@
-platform :ios, '13.0'
+# ML Kit 글자 인식이 iOS 15.5 이상을 요구한다.
+platform :ios, '15.5'
+$iOSVersion = '15.5'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -30,17 +32,27 @@ target 'Runner' do
   use_frameworks!
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # 사진 속 한글 읽기
+  pod 'GoogleMLKit/TextRecognitionKorean', '~> 9.0.0'
   target 'RunnerTests' do
     inherit! :search_paths
   end
 end
 
 post_install do |installer|
+  installer.pods_project.build_configurations.each do |config|
+    config.build_settings['EXCLUDED_ARCHS[sdk=*]'] = 'armv7'
+    config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = $iOSVersion
+  end
+
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
 
     # permission_handler: 실제로 쓰는 권한만 켠다. (안 쓰는 권한 코드가 있으면 앱 심사에서 거절될 수 있음)
     target.build_configurations.each do |config|
+      if Gem::Version.new($iOSVersion) > Gem::Version.new(config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] || '0')
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = $iOSVersion
+      end
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         'PERMISSION_LOCATION=1',

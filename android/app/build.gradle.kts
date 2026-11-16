@@ -47,4 +47,6 @@ flutter {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    // 사진 속 한글 읽기 (기기 안에서 동작, 인터넷 불필요)
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }

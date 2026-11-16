@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>빠짐없이</string>
+	<string>까마귀</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -72,6 +72,14 @@
 	<string>앱을 닫아도 매장 근처를 지나거나 물건을 안 사고 매장을 나설 때 알려드리기 위해 위치를 항상 사용해요.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>앱을 닫아도 매장 근처를 지나거나 물건을 안 사고 매장을 나설 때 알려드리기 위해 위치를 항상 사용해요.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>살 물건을 말로 추가할 때 마이크를 사용해요.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>"우유랑 계란 사야 돼"처럼 말한 내용을 글자로 바꿔 물건 목록에 넣어요.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>사려는 물건을 사진으로 찍어 두면, 매장에서 알림과 함께 보여드려요.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>앨범의 사진을 물건에 붙여 두면, 매장에서 알림과 함께 보여드려요.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

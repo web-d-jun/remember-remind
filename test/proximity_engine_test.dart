@@ -108,6 +108,22 @@ void main() {
       expect(at(100, Duration.zero, accuracy: 500), isEmpty);
     });
 
+    test('[오늘은 그만]으로 미룬 물건은 근처 알림에서 빠진다', () {
+      final snoozed = milk.copyWith(
+        snoozedUntil: t0.add(const Duration(hours: 6)),
+      );
+      pending = [snoozed, battery];
+      expect(at(100, Duration.zero).single.items, [battery]);
+    });
+
+    test('미룬 물건뿐이면 근처 알림을 보내지 않지만, 매장에 들어가면 목록은 보여준다', () {
+      pending = [milk.copyWith(snoozedUntil: t0.add(const Duration(hours: 6)))];
+      expect(at(100, Duration.zero), isEmpty);
+      at(10, const Duration(minutes: 1));
+      final events = at(10, const Duration(minutes: 3));
+      expect(events.single, isA<InStoreEvent>());
+    });
+
     test('여러 매장이 있으면 가장 가까운 곳 하나만 알린다', () {
       final events = at(
         75,
