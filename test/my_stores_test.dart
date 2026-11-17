@@ -40,10 +40,9 @@ void main() {
       location: const LatLng(37.6, 126.9780), // 약 3.7km
       large: false,
     );
-    expect(
-      stores.near(cityHall, {StoreCategory.daiso}).map((s) => s.name),
-      ['다이소'],
-    );
+    expect(stores.near(cityHall, {StoreCategory.daiso}).map((s) => s.name), [
+      '다이소',
+    ]);
     expect(stores.near(cityHall, {StoreCategory.pharmacy}), isEmpty);
   });
 

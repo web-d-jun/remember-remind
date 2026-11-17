@@ -28,6 +28,11 @@ void main() {
     final battery = item('건전지');
     final bought = item('휴지').copyWith(purchasedAt: now);
 
+    test('물건이 하나일 때만 [샀어요] 버튼을 붙인다 (일부만 샀는데 전부 체크되지 않게)', () {
+      expect(offersPurchasedButton([milk]), isTrue);
+      expect(offersPurchasedButton([milk, battery]), isFalse);
+    });
+
     test('payload에 물건 id를 담고 다시 꺼낼 수 있다', () {
       expect(decodeItemIds(encodeItemIds([milk, battery])), {'우유', '건전지'});
       expect(decodeItemIds(null), isEmpty);
@@ -79,6 +84,50 @@ void main() {
       final copy = NotificationCopy.of(ApproachEvent(store, [item('우유')]));
       expect(copy.title, '까악! GS25 시청점 앞이에요');
       expect(copy.body, '여기서 우유를 살 수 있어요');
+    });
+
+    group('대형 매장 안에 입점한 매장', () {
+      const emart = Store(
+        id: 'emart',
+        name: '이마트 성수점',
+        category: StoreCategory.mart,
+        location: LatLng(37.5665, 126.9780),
+        large: true,
+      );
+      const pharmacy = Store(
+        id: 'ph',
+        name: '이마트약국',
+        category: StoreCategory.pharmacy,
+        location: LatLng(37.5665, 126.9780),
+      );
+      ShoppingItem at(String name, StoreCategory c) =>
+          ShoppingItem(id: name, name: name, categories: {c}, createdAt: now);
+      final rice = at('쌀', StoreCategory.mart);
+      final medicine = at('감기약', StoreCategory.pharmacy);
+
+      test('근처 알림에 안에 있는 매장을 알려준다', () {
+        final copy = NotificationCopy.of(
+          ApproachEvent(emart, [rice, medicine], tenants: [pharmacy]),
+        );
+        expect(copy.body, '여기서 쌀, 감기약을 살 수 있어요 (안에 약국이 있어요)');
+      });
+
+      test('마트에서 바로 살 수 있으면 덧붙이지 않는다', () {
+        final copy = NotificationCopy.of(
+          ApproachEvent(emart, [rice], tenants: [pharmacy]),
+        );
+        expect(copy.body, '여기서 쌀을 살 수 있어요');
+      });
+
+      test('매장 안 목록에 어디서 사는지 붙인다', () {
+        final copy = NotificationCopy.inStore(
+          emart,
+          [rice, medicine],
+          [pharmacy],
+        );
+        expect(copy.title, '이마트 성수점에서 살 것 2개');
+        expect(copy.body, '• 쌀\n• 감기약 (약국)');
+      });
     });
 
     test('안 사고 나갈 때', () {

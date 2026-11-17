@@ -10,9 +10,9 @@ import '../state/my_stores.dart';
 class MyStoresScreen extends StatelessWidget {
   const MyStoresScreen({super.key});
 
-  static Future<void> open(BuildContext context) => Navigator.of(context).push(
-    MaterialPageRoute<void>(builder: (_) => const MyStoresScreen()),
-  );
+  static Future<void> open(BuildContext context) => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const MyStoresScreen()));
 
   @override
   Widget build(BuildContext context) {
@@ -39,10 +39,7 @@ class MyStoresScreen extends StatelessWidget {
                     color: theme.colorScheme.outline,
                   ),
                   const SizedBox(height: 16),
-                  Text(
-                    '까마귀가 모르는 매장이 있나요?',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  Text('까마귀가 모르는 매장이 있나요?', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 8),
                   Text(
                     '다이소처럼 자주 가는데 알림이 안 오는 매장에 가서\n'
@@ -246,7 +243,9 @@ class _RegisterSheetState extends State<_RegisterSheet> {
               value: _large,
               onChanged: (v) => setState(() => _large = v),
               title: const Text('큰 매장'),
-              subtitle: const Text('마트처럼 넓으면 켜 두세요. 매장 안에서 위치가 튀어도 안에 있다고 알아봐요.'),
+              subtitle: const Text(
+                '마트처럼 넓으면 켜 두세요. 매장 안에서 위치가 튀어도 안에 있다고 알아봐요.',
+              ),
             ),
           ],
           const SizedBox(height: 16),

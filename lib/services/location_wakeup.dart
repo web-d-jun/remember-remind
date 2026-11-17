@@ -20,8 +20,7 @@ class LocationWakeup {
   /// iOS 지역 모니터링 개수 제한은 앱당 20개.
   static const maxRegions = 20;
 
-  bool get _supported =>
-      !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
+  bool get _supported => !kIsWeb && defaultTargetPlatform == TargetPlatform.iOS;
 
   Future<void> start() => _call('start');
 

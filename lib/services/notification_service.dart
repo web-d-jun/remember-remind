@@ -7,6 +7,7 @@ import '../core/notification_copy.dart';
 import '../core/proximity_engine.dart';
 import '../data/photo_store.dart';
 import '../models/shopping_item.dart';
+import '../models/store.dart';
 import 'notification_action_bridge.dart';
 
 typedef NotificationActionCallback =
@@ -30,6 +31,10 @@ class NotificationService {
   static const _approachCategory = 'approach';
   static const _inStoreCategory = 'in_store';
   static const _forgotCategory = 'forgot';
+
+  // 물건이 여러 개일 때: [샀어요] 없이. (offersPurchasedButton 참고)
+  static const _approachMultiCategory = 'approach_multi';
+  static const _forgotMultiCategory = 'forgot_multi';
 
   static final _purchasedAndroid = AndroidNotificationAction(
     NotificationAction.purchased.id,
@@ -64,6 +69,16 @@ class NotificationService {
                 ),
               ],
             ),
+            DarwinNotificationCategory(
+              _approachMultiCategory,
+              actions: [
+                DarwinNotificationAction.plain(
+                  NotificationAction.snoozeToday.id,
+                  '오늘은 그만',
+                ),
+              ],
+            ),
+            DarwinNotificationCategory(_forgotMultiCategory),
             DarwinNotificationCategory(
               _inStoreCategory,
               actions: [
@@ -118,6 +133,7 @@ class NotificationService {
       case ApproachEvent(:final store, :final items):
         final copy = NotificationCopy.of(event);
         final photo = await _photoFor(items);
+        final single = offersPurchasedButton(items);
         await _plugin.show(
           id: store.id.hashCode & 0x7fffffff,
           title: copy.title,
@@ -132,22 +148,25 @@ class NotificationService {
               priority: Priority.high,
               largeIcon: photo?.android,
               styleInformation: photo?.bigPicture(copy),
-              actions: [_purchasedAndroid, _snoozeAndroid],
+              actions: [if (single) _purchasedAndroid, _snoozeAndroid],
             ),
             iOS: DarwinNotificationDetails(
-              categoryIdentifier: _approachCategory,
+              categoryIdentifier: single
+                  ? _approachCategory
+                  : _approachMultiCategory,
               interruptionLevel: InterruptionLevel.active,
               attachments: photo?.ios,
             ),
           ),
         );
-      case InStoreEvent(:final store, :final items):
-        await showInStore(store.name, items);
+      case InStoreEvent(:final store, :final items, :final tenants):
+        await showInStore(store, items, tenants);
       case LeftStoreEvent(:final items):
         await _plugin.cancel(id: _inStoreId);
         if (items.isEmpty) return;
         final copy = NotificationCopy.of(event);
         final photo = await _photoFor(items);
+        final single = offersPurchasedButton(items);
         await _plugin.show(
           id: _forgotId,
           title: copy.title,
@@ -164,10 +183,12 @@ class NotificationService {
               largeIcon: photo?.android,
               styleInformation:
                   photo?.bigPicture(copy) ?? BigTextStyleInformation(copy.body),
-              actions: [_purchasedAndroid],
+              actions: [if (single) _purchasedAndroid],
             ),
             iOS: DarwinNotificationDetails(
-              categoryIdentifier: _forgotCategory,
+              categoryIdentifier: single
+                  ? _forgotCategory
+                  : _forgotMultiCategory,
               interruptionLevel: InterruptionLevel.active,
               attachments: photo?.ios,
             ),
@@ -178,12 +199,16 @@ class NotificationService {
 
   /// 매장 안에 있는 동안 고정해 두는 알림. 물건을 체크할 때마다 다시 그린다.
   /// 목록이 잘 보이도록 사진은 작은 아이콘으로만 붙인다.
-  Future<void> showInStore(String storeName, List<ShoppingItem> items) async {
+  Future<void> showInStore(
+    Store store,
+    List<ShoppingItem> items, [
+    List<Store> tenants = const [],
+  ]) async {
     if (items.isEmpty) {
       await _plugin.cancel(id: _inStoreId);
       return;
     }
-    final copy = NotificationCopy.inStore(storeName, items);
+    final copy = NotificationCopy.inStore(store, items, tenants);
     final photo = await _photoFor(items);
     await _plugin.show(
       id: _inStoreId,

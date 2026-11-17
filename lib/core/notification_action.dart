@@ -22,6 +22,13 @@ enum NotificationAction {
   }
 }
 
+/// 알림에 [샀어요] 버튼을 붙일지.
+///
+/// 버튼 한 번은 알림에 나온 물건 전부에 적용된다. 물건이 여러 개면 일부만 샀을 수
+/// 있는데("우유만 사고 계란은 깜빡") 전부 산 걸로 처리되면 빠뜨린 걸 다시 알려 주지
+/// 못한다. 그래서 물건이 하나일 때만 붙이고, 여러 개면 앱이나 매장 안 목록에서 체크한다.
+bool offersPurchasedButton(List<ShoppingItem> items) => items.length == 1;
+
 /// 알림 payload: 알림에 나온 물건 id 목록.
 String encodeItemIds(Iterable<ShoppingItem> items) =>
     jsonEncode([for (final i in items) i.id]);

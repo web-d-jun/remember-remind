@@ -3,7 +3,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:quick_actions/quick_actions.dart';
 
-import '../core/proximity_engine.dart';
 import '../models/shopping_item.dart';
 import '../data/photo_store.dart';
 import '../services/location_tracker.dart';
@@ -184,7 +183,8 @@ class _InStoreBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = tracker.currentStore;
     if (store == null) return const SizedBox.shrink();
-    final items = ProximityEngine.itemsFor(store, pending);
+    // 대형 매장 안에 입점한 매장(약국 등)에서 살 물건까지 함께 보여준다.
+    final items = tracker.engine.currentStoreItems(pending);
     final scheme = Theme.of(context).colorScheme;
 
     return Card(

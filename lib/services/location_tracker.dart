@@ -119,7 +119,9 @@ class LocationTracker extends ChangeNotifier {
       return;
     }
     final always = permission == LocationPermission.always;
-    _setStatus(always ? TrackingStatus.tracking : TrackingStatus.foregroundOnly);
+    _setStatus(
+      always ? TrackingStatus.tracking : TrackingStatus.foregroundOnly,
+    );
     _startStream();
     // 앱이 종료돼도 다시 깨어날 수 있게 한다. ("항상 허용"일 때만 동작)
     if (always) {
@@ -264,8 +266,9 @@ class LocationTracker extends ChangeNotifier {
     final store = engine.currentStore;
     if (store != null) {
       notifications.showInStore(
-        store.name,
+        store,
         engine.currentStoreItems(list.pending),
+        engine.currentTenants,
       );
     }
     _sync();

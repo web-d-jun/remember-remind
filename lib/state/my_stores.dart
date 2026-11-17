@@ -80,8 +80,6 @@ class MyStores extends ChangeNotifier {
     }
   }
 
-  Future<void> _save() => _prefs.setString(
-    _key,
-    jsonEncode([for (final s in _stores) s.toJson()]),
-  );
+  Future<void> _save() =>
+      _prefs.setString(_key, jsonEncode([for (final s in _stores) s.toJson()]));
 }
