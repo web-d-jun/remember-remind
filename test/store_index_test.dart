@@ -16,6 +16,7 @@ void main() {
         'convenience\t3757100\t12697800\tGS25 북쪽점', // 약 500m
         'convenience\t3760000\t12697800\t세븐일레븐 먼곳', // 약 3.7km
         'pharmacy\t3756650\t12697850\t시청약국',
+        'mart\t3756700\t12697900\t홈플러스 시청점\tL',
         'unknown\t3756650\t12697800\t모르는종류',
         '깨진줄',
         '',
@@ -23,7 +24,22 @@ void main() {
     );
 
     test('깨진 줄과 모르는 종류는 건너뛴다', () {
-      expect(index.length, 4);
+      expect(index.length, 5);
+    });
+
+    test('다섯째 칸이 L이면 대형 매장이다', () {
+      final mart = index.nearby(
+        center: cityHall,
+        category: StoreCategory.mart,
+        radiusMeters: 500,
+      );
+      expect(mart.single.large, isTrue);
+      final conv = index.nearby(
+        center: cityHall,
+        category: StoreCategory.convenience,
+        radiusMeters: 500,
+      );
+      expect(conv.every((s) => !s.large), isTrue);
     });
 
     test('반경 안의 같은 종류 매장만 가까운 순서로 돌려준다', () {
