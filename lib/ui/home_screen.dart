@@ -9,6 +9,7 @@ import '../data/photo_store.dart';
 import '../services/location_tracker.dart';
 import '../state/shopping_list.dart';
 import 'add_item_sheet.dart';
+import 'my_stores_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -94,7 +95,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final purchased = list.purchased;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('까마귀')),
+      appBar: AppBar(
+        title: const Text('까마귀'),
+        actions: [
+          IconButton(
+            tooltip: '내 매장',
+            icon: const Icon(Icons.storefront_outlined),
+            onPressed: () => MyStoresScreen.open(context),
+          ),
+        ],
+      ),
       // 생각난 순간 바로 저장할 수 있게, 말하기와 사진 찍기를 한 번에 연다.
       // 생각난 순간 바로 저장: 말하기가 가장 크고, 사진·글자는 작게 둔다.
       floatingActionButton: Column(

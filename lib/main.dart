@@ -11,32 +11,60 @@ import 'services/notification_action_bridge.dart';
 import 'services/notification_service.dart';
 import 'services/photo_text_reader.dart';
 import 'services/voice_input.dart';
+import 'state/my_stores.dart';
 import 'state/shopping_list.dart';
 import 'ui/home_screen.dart';
+
+/// 화면이 있든 없든 필요한 것들. 앱 실행과 백그라운드 실행이 같이 쓴다.
+class _Services {
+  _Services(this.list, this.myStores, this.photos, this.tracker);
+
+  final ShoppingList list;
+  final MyStores myStores;
+  final PhotoStore photos;
+  final LocationTracker tracker;
+
+  static Future<_Services> create() async {
+    final prefs = await SharedPreferences.getInstance();
+    final photos = await PhotoStore.open();
+    final list = ShoppingList(ItemRepository(prefs), photos: photos);
+    final myStores = MyStores(prefs);
+    final notifications = NotificationService(photos: photos);
+    await notifications.init(onAction: list.applyAction);
+    // 앱이 백그라운드에 있을 때 누른 알림 버튼도 화면의 목록에 바로 반영한다.
+    NotificationActionReceiver(list).start();
+
+    final tracker = LocationTracker(
+      list: list,
+      cache: StoreCache(OfflinePlaceSource()),
+      notifications: notifications,
+      myStores: myStores,
+    );
+    return _Services(list, myStores, photos, tracker);
+  }
+}
+
+/// iOS가 종료된 앱을 위치 이벤트로 깨웠을 때, 화면 없이 실행된다.
+/// (ios/Runner/AppDelegate.swift 가 이 이름으로 부른다)
+@pragma('vm:entry-point')
+Future<void> backgroundMain() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final services = await _Services.create();
+  await services.tracker.start();
+}
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  final prefs = await SharedPreferences.getInstance();
-  final photos = await PhotoStore.open();
-  final list = ShoppingList(ItemRepository(prefs), photos: photos);
-  final notifications = NotificationService(photos: photos);
-  await notifications.init(onAction: list.applyAction);
-  // 앱이 백그라운드에 있을 때 누른 알림 버튼도 화면의 목록에 바로 반영한다.
-  NotificationActionReceiver(list).start();
-
-  final places = OfflinePlaceSource();
-  final tracker = LocationTracker(
-    list: list,
-    cache: StoreCache(places),
-    notifications: notifications,
-  );
+  final services = await _Services.create();
+  final _Services(:list, :myStores, :photos, :tracker) = services;
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider.value(value: list),
         ChangeNotifierProvider.value(value: tracker),
+        ChangeNotifierProvider.value(value: myStores),
         Provider.value(value: photos),
         Provider(create: (_) => VoiceInput()),
         Provider(

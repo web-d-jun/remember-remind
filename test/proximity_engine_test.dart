@@ -188,4 +188,97 @@ void main() {
       expect(engine.currentStoreItems([rice]), isEmpty);
     });
   });
+
+  group('대형 매장: 안에서는 GPS가 매장 좌표와 많이 어긋난다', () {
+    // 매장 좌표(건물 가운데)에서 북쪽으로 1km 떨어진 곳을 기준으로 한다.
+    final hypermarket = Store(
+      id: 'homeplus',
+      name: '홈플러스 시청점',
+      category: StoreCategory.mart,
+      location: north(origin, 1000),
+      large: true,
+    );
+    final smallMart = Store(
+      id: 'small',
+      name: '동네마트',
+      category: StoreCategory.mart,
+      location: north(origin, 1000),
+    );
+
+    /// 매장 좌표에서 [m]미터 떨어진 곳.
+    List<ProximityEvent> near(
+      Store store,
+      double m,
+      Duration elapsed, {
+      List<Store>? stores,
+    }) => at(1000 + m, elapsed, stores: stores ?? [store]);
+
+    setUp(() => pending = [rice]);
+
+    test('매장 좌표에서 100m 떨어져 있어도 5분 머물면 안에 있다고 본다', () {
+      near(hypermarket, 100, Duration.zero);
+      near(hypermarket, 120, const Duration(minutes: 2));
+      expect(engine.currentStore, isNull, reason: '아직 5분이 안 됐다');
+      final events = near(hypermarket, 90, const Duration(minutes: 5));
+      expect(events.single, isA<InStoreEvent>());
+      expect(engine.currentStore, hypermarket);
+    });
+
+    test('근처에 들어올 때 접근 알림은 그대로 보낸다', () {
+      final events = near(hypermarket, 140, Duration.zero);
+      expect(events.single, isA<ApproachEvent>());
+    });
+
+    test('GPS가 150m 넘게 튀어도 크게 벗어나지 않으면 떠난 걸로 보지 않는다', () {
+      near(hypermarket, 100, Duration.zero);
+      near(hypermarket, 100, const Duration(minutes: 5));
+      expect(near(hypermarket, 200, const Duration(minutes: 8)), isEmpty);
+      expect(engine.currentStore, hypermarket);
+    });
+
+    test('250m 넘게 벗어나면 떠났다고 보고, 안 산 물건을 알린다', () {
+      near(hypermarket, 100, Duration.zero);
+      near(hypermarket, 100, const Duration(minutes: 5));
+      final left = near(hypermarket, 300, const Duration(minutes: 20)).single
+          as LeftStoreEvent;
+      expect(left.items, [rice]);
+      expect(engine.currentStore, isNull);
+    });
+
+    test('근처를 잠깐 지나가기만 하면 안에 있다고 보지 않는다', () {
+      near(hypermarket, 100, Duration.zero);
+      near(hypermarket, 120, const Duration(minutes: 2));
+      expect(near(hypermarket, 400, const Duration(minutes: 3)), isEmpty);
+      expect(near(hypermarket, 100, const Duration(minutes: 6)), isEmpty);
+      expect(engine.currentStore, isNull, reason: '다시 온 때부터 새로 센다');
+    });
+
+    test('매장 좌표 가까이 오면 일반 매장처럼 1분이면 확정한다', () {
+      near(hypermarket, 100, Duration.zero);
+      near(hypermarket, 20, const Duration(seconds: 30));
+      final events = near(hypermarket, 20, const Duration(seconds: 70));
+      expect(events.single, isA<InStoreEvent>());
+    });
+
+    test('일반 매장은 근처에 오래 있어도 안에 있다고 보지 않는다', () {
+      near(smallMart, 100, Duration.zero);
+      near(smallMart, 100, const Duration(minutes: 10));
+      expect(engine.currentStore, isNull);
+    });
+
+    test('대형 매장 근처에 머무는 동안에도 바로 옆 다른 매장에 들어가면 그쪽으로 본다', () {
+      final pharmacy = Store(
+        id: 'ph',
+        name: '약국',
+        category: StoreCategory.pharmacy,
+        location: north(origin, 1100),
+      );
+      pending = [rice, item('감기약', {StoreCategory.pharmacy})];
+      final stores = [hypermarket, pharmacy];
+      near(hypermarket, 120, Duration.zero, stores: stores);
+      near(hypermarket, 100, const Duration(minutes: 1), stores: stores);
+      near(hypermarket, 100, const Duration(minutes: 3), stores: stores);
+      expect(engine.currentStore, pharmacy);
+    });
+  });
 }
