@@ -17,6 +17,7 @@ import gzip
 import io
 import math
 import os
+import re
 import sys
 import zipfile
 
@@ -103,6 +104,35 @@ def _brand(name):
     return brand
 
 
+def is_small_format(name):
+    """같은 브랜드의 작은 매장(SSM)인지. 대형 매장 판정(L)을 붙이지 않는다."""
+    brand = _brand(name)
+    return brand is not None and brand.endswith('-small')
+
+
+_CORP = re.compile(r'\(주\)|㈜|주식회사|\(유\)|\(합\)')
+
+
+def clean_name(name):
+    """알림에 보일 이름을 다듬는다.
+
+    '(주)이마트 통영점' -> '이마트 통영점', '롯데쇼핑(주)롯데마트통영점' -> '롯데마트통영점',
+    '삼성테스코(주)홈플러스 광주하남점' -> '홈플러스 광주하남점'
+    """
+    n = ' '.join(_CORP.sub(' ', name).split())
+    for b in BRANDS:
+        i = n.find(b)
+        if i > 0:
+            n = n[i:]
+            break
+    return n or name
+
+
+def _better_name(a, b):
+    """같은 매장의 두 이름 중 알림에 쓰기 좋은 쪽. 지점명('~점')이 있는 쪽, 그다음 짧은 쪽."""
+    return min(a, b, key=lambda n: (not n.endswith('점'), len(n)))
+
+
 def _distance_m(lat1, lng1, lat2, lng2):
     # 좌표는 x100000 정수. 짧은 거리라 평면 근사로 충분하다.
     dy = (lat1 - lat2) / 100000 * 111320
@@ -115,20 +145,10 @@ def merge_extra_stores(asset, extra_paths):
 
     여러 번 실행해도 결과가 같다(이전에 합친 줄도 같은 매장으로 보고 교체된다).
     """
-    extra = []
-    for path in extra_paths:
-        with open(path, encoding='utf-8') as f:
-            for line in f:
-                parts = line.rstrip('\n').split('\t')
-                if len(parts) == 4:
-                    extra.append((parts[0], int(parts[1]), int(parts[2]), parts[3]))
-
     cell = 300  # x100000 단위, 약 300m
     grid = collections.defaultdict(list)
-    for e in extra:
-        grid[(e[1] // cell, e[2] // cell)].append(e)
 
-    def duplicate(category, lat, lng, name):
+    def find_same(category, lat, lng, name):
         brand = _brand(name)
         for i in (-1, 0, 1):
             for j in (-1, 0, 1):
@@ -138,8 +158,31 @@ def merge_extra_stores(asset, extra_paths):
                     d = _distance_m(lat, lng, e[1], e[2])
                     if d <= SAME_PLACE_M or (
                             brand and d <= SAME_BRAND_M and brand == _brand(e[3])):
-                        return True
-        return False
+                        return e
+        return None
+
+    def duplicate(category, lat, lng, name):
+        return find_same(category, lat, lng, name) is not None
+
+    # 대규모점포 데이터에는 같은 매장이 여러 번 있다(재등록, 회사명 변경 등). 하나로 합친다.
+    extra = []
+    merged = 0
+    for path in extra_paths:
+        with open(path, encoding='utf-8') as f:
+            for line in f:
+                parts = line.rstrip('\n').split('\t')
+                if len(parts) < 4:
+                    continue
+                row = [parts[0], int(parts[1]), int(parts[2]), clean_name(parts[3])]
+                same = find_same(*row)
+                if same is not None:
+                    same[3] = _better_name(same[3], row[3])
+                    merged += 1
+                    continue
+                extra.append(row)
+                grid[(row[1] // cell, row[2] // cell)].append(row)
+    if merged:
+        print(f'  같은 매장 중복 {merged:,}건 합침')
 
     kept = []
     dropped = 0
@@ -153,13 +196,22 @@ def merge_extra_stores(asset, extra_paths):
             kept.append(line if line.endswith('\n') else line + '\n')
 
     tmp = asset + '.tmp'
-    with gzip.open(tmp, 'wt', encoding='utf-8', compresslevel=9, newline='\n') as w:
+    # mtime=0: 내용이 같으면 파일도 똑같게 (다시 실행해도 git 변경으로 안 잡히게)
+    with gzip.GzipFile(tmp, 'wb', compresslevel=9, mtime=0) as raw, \
+            io.TextIOWrapper(raw, encoding='utf-8', newline='\n') as w:
         w.writelines(kept)
+        large = 0
         for category, lat, lng, name in extra:
             # 다섯째 칸 L: 대형 매장. 앱이 "매장 안" 판정을 느슨하게 한다.
-            w.write(f'{category}\t{lat}\t{lng}\t{name}\tL\n')
+            # 홈플러스 익스프레스 같은 작은 매장은 일반 매장처럼 판단한다.
+            if is_small_format(name):
+                w.write(f'{category}\t{lat}\t{lng}\t{name}\n')
+            else:
+                w.write(f'{category}\t{lat}\t{lng}\t{name}\tL\n')
+                large += 1
     os.replace(tmp, asset)
-    print(f'대형마트 {len(extra):,}곳 합침 (겹치는 기존 {dropped:,}곳 교체) -> {asset}')
+    print(f'대형마트 등 {len(extra):,}곳 합침 (대형 {large:,}곳, 작은 매장 '
+          f'{len(extra) - large:,}곳 / 겹치는 기존 {dropped:,}곳 교체) -> {asset}')
 
 
 if __name__ == '__main__':
