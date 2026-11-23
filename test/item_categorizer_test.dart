@@ -19,6 +19,21 @@ void main() {
     expect(categorizer.suggest('AA 건전지'), contains(StoreCategory.daiso));
   });
 
+  test('젖병솔 같은 아기용품은 편의점이 아니라 마트·다이소를 추천한다', () {
+    expect(categorizer.suggest('젖병솔'), {
+      StoreCategory.mart,
+      StoreCategory.daiso,
+    });
+    expect(categorizer.suggest('분유'), contains(StoreCategory.mart));
+  });
+
+  test('아이스크림·과자는 아이스크림 할인점도 추천하고, 우유는 추천하지 않는다', () {
+    expect(categorizer.suggest('아이스크림'), contains(StoreCategory.snack));
+    expect(categorizer.suggest('과자'), contains(StoreCategory.snack));
+    expect(categorizer.suggest('우유'), isNot(contains(StoreCategory.snack)));
+    expect(categorizer.suggest('젖병솔'), isNot(contains(StoreCategory.snack)));
+  });
+
   test('모르는 물건은 편의점·마트를 추천하고, 빈 이름은 추천하지 않는다', () {
     expect(categorizer.suggest('무언가'), ItemCategorizer.fallback);
     expect(categorizer.suggest('  '), isEmpty);

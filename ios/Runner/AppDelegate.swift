@@ -18,6 +18,9 @@ import flutter_local_notifications
   ) -> Bool {
     // 위치 이벤트로 다시 실행됐으면, 위치 관리자를 바로 만들어 이벤트를 받을 수 있게 해야 한다.
     let wakeup = LocationWakeup.shared
+    // 알림을 앱이 열려 있을 때도 띄우고, 알림 버튼 응답을 플러그인이 받게 한다.
+    // 이게 없으면 iOS는 앱이 앞에 있는 동안 알림을 조용히 버린다.
+    UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
     let result = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
     // 화면이 붙으면(사용자가 앱을 열면) 백그라운드 엔진은 끈다. 두 엔진이 같이 돌면 알림이 두 번 간다.

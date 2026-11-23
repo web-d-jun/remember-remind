@@ -13,13 +13,16 @@ class ItemCategorizer {
   static const _d = StoreCategory.daiso;
   static const _o = StoreCategory.drugstore;
   static const _s = StoreCategory.stationery;
+  static const _k = StoreCategory.snack;
 
   static const Map<String, Set<StoreCategory>> _dictionary = {
     // 식품
     '우유': {_c, _m}, '계란': {_c, _m}, '달걀': {_c, _m}, '두부': {_c, _m},
     '라면': {_c, _m}, '빵': {_c, _m}, '물': {_c, _m}, '생수': {_c, _m},
     '커피': {_c, _m}, '음료': {_c, _m}, '맥주': {_c, _m}, '소주': {_c, _m},
-    '과자': {_c, _m}, '아이스크림': {_c, _m}, '요거트': {_c, _m},
+    '과자': {_c, _m, _k}, '아이스크림': {_c, _m, _k}, '요거트': {_c, _m},
+    '초콜릿': {_c, _m, _k}, '사탕': {_c, _m, _k}, '젤리': {_c, _m, _k},
+    '껌': {_c, _m, _k},
     '햇반': {_c, _m}, '즉석밥': {_c, _m},
     '쌀': {_m}, '고기': {_m}, '돼지고기': {_m}, '소고기': {_m}, '닭': {_m},
     '채소': {_m}, '야채': {_m}, '과일': {_m}, '양파': {_m}, '대파': {_m},
@@ -36,6 +39,9 @@ class ItemCategorizer {
     '칫솔': {_c, _m, _d, _o}, '치약': {_c, _m, _d, _o},
     '샴푸': {_m, _o}, '린스': {_m, _o}, '바디워시': {_m, _o}, '비누': {_m, _d},
     '생리대': {_c, _m, _o}, '기저귀': {_m},
+    // 아기용품
+    '젖병': {_m, _d}, '젖병솔': {_m, _d}, '젖꼭지': {_m}, '분유': {_m, _p},
+    '이유식': {_m}, '아기물티슈': {_m, _d},
     // 화장품
     '선크림': {_o}, '로션': {_o}, '립밤': {_o, _c}, '마스크팩': {_o, _d},
     '화장품': {_o}, '클렌징': {_o}, '마스크': {_c, _p, _d, _o},

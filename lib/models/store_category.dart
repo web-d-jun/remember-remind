@@ -8,7 +8,11 @@ enum StoreCategory {
   pharmacy('약국'),
   daiso('다이소'),
   drugstore('올리브영'),
-  stationery('문구점');
+  stationery('문구점'),
+
+  /// 아이스크림·과자 할인점. 상가정보에는 슈퍼마켓으로 등록돼 있지만
+  /// 아이스크림·과자만 팔아서 마트와 나눈다. (tool/build_store_data.py의 mart_kind)
+  snack('아이스크림·과자');
 
   const StoreCategory(this.label);
 

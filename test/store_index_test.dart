@@ -48,7 +48,8 @@ void main() {
         category: StoreCategory.convenience,
         radiusMeters: 1000,
       );
-      expect(stores.map((s) => s.name), ['씨유 시청점', 'GS25 북쪽점']);
+      // 이름은 브랜드 이름으로 바꿔서 돌려준다. ("씨유" → "CU", lib/core/store_name.dart)
+      expect(stores.map((s) => s.name), ['CU 시청점', 'GS25 북쪽점']);
       expect(stores.first.location.latitude, closeTo(37.5666, 1e-6));
     });
 

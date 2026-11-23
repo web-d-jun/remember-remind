@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io' show gzip;
 import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:flutter/services.dart' show rootBundle;
 
@@ -29,17 +30,31 @@ class OfflinePlaceSource implements PlaceSource {
   Future<StoreIndex>? _index;
 
   Future<StoreIndex> _load() {
-    return _index ??= () async {
-      final bytes = await rootBundle.load(assetPath);
-      final data = bytes.buffer.asUint8List(
-        bytes.offsetInBytes,
-        bytes.lengthInBytes,
-      );
-      return Isolate.run(
-        () => StoreIndex.parse(utf8.decode(gzip.decode(data))),
-      );
-    }();
+    final loading = _index ??= _loadFromAsset(assetPath);
+    // 실패한 Future를 들고 있으면 다시는 못 읽으므로, 실패하면 다음 검색 때 다시 시도한다.
+    loading.then<void>(
+      (_) {},
+      onError: (Object _) {
+        if (identical(_index, loading)) _index = null;
+      },
+    );
+    return loading;
   }
+
+  static Future<StoreIndex> _loadFromAsset(String assetPath) async {
+    final bytes = await rootBundle.load(assetPath);
+    final data = bytes.buffer.asUint8List(
+      bytes.offsetInBytes,
+      bytes.lengthInBytes,
+    );
+    return _parseInBackground(data);
+  }
+
+  /// 백그라운드 isolate로 넘기는 클로저는 [data]만 잡아야 한다.
+  /// async 함수 안에서 만들면 그 함수의 Future까지 잡혀서 "object is unsendable"로
+  /// 실패한다. 그래서 async가 아닌 별도 함수에서 만든다.
+  static Future<StoreIndex> _parseInBackground(Uint8List data) =>
+      Isolate.run(() => StoreIndex.parse(utf8.decode(gzip.decode(data))));
 
   @override
   Future<List<Store>> nearby({

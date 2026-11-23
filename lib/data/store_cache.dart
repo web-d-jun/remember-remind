@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../core/geo.dart';
 import '../models/store.dart';
 import '../models/store_category.dart';
@@ -53,8 +55,10 @@ class StoreCache {
             radiusMeters: searchRadius,
           );
           _entries[c] = _Entry(center, now, result);
-        } on Exception {
-          // 네트워크 오류 등은 다음 위치 갱신 때 재시도한다.
+        } catch (e) {
+          // 읽기 실패 등은 다음 위치 갱신 때 재시도한다.
+          // (Error도 잡는다. 놓치면 그 뒤 매장 갱신 전체가 멈춘다)
+          debugPrint('주변 매장 조회 실패(${c.name}): $e');
         }
       }),
     );

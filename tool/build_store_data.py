@@ -2,6 +2,7 @@
 
 사용법:
     python tool/build_store_data.py <다운로드한 zip 경로> [출력 경로]
+    python tool/build_store_data.py --refilter [데이터 경로]   # 이미 만든 데이터에 제외 규칙만 다시 적용
 
 데이터: https://www.data.go.kr/data/15083033/fileData.do (분기별 갱신, 이용허락범위 제한 없음)
 
@@ -39,11 +40,69 @@ CODE_RULES = {
 }
 
 
+# 슈퍼마켓 코드(G20404)로 등록됐지만 마트가 아닌 가게들.
+#
+# 1) 아이스크림·과자 할인점(약 3,400곳): 'snack'으로 따로 둔다. 마트로 넣으면 우유·젖병솔도
+#    "여기서 살 수 있어요"라고 틀리게 알리고, 빼 버리면 아이스크림을 등록해도 이 가게들을
+#    못 찾는다. 이름에 "마트/마켓"이 있어도 대부분 같은 가게라, 슈퍼·편의점·하나로처럼
+#    확실히 장 보는 곳일 때만 마트로 남긴다.
+# 2) 빵집·방앗간·정육점·담배 가게 등: 파는 물건이 제각각이라 뺀다.
+_SNACK = re.compile(r'아이스|과자|스낵|간식|캔디|젤리')
+_NARROW = re.compile(r'빵|분식|키즈카페|놀이터|쿠키|떡|디저트|커피|와인|주류|담배|'
+                     r'홍삼|건강원|방앗간|정육|축산|수산|건어물|청과|과일|반찬|펫|반려')
+_GROCERY_STRONG = re.compile(r'슈퍼|편의점|하나로|농협|식자재|상회|연쇄점')
+_GROCERY = re.compile(r'마트|마켓|상점|생협|한살림|두레|아이쿱|자연드림|종합|'
+                      + _GROCERY_STRONG.pattern)
+
+
+def mart_kind(name):
+    """슈퍼마켓 코드로 등록된 가게를 다시 나눈다. 'mart', 'snack', 또는 None(뺀다).
+
+    '더샵아이스크림할인점' -> 'snack', '아이스크림할인마트' -> 'snack',
+    '대한방앗간' -> None, '현산청과슈퍼' -> 'mart', '농축산하나로마트' -> 'mart'
+    """
+    n = name.replace(' ', '')
+    if _SNACK.search(n):
+        return 'mart' if _GROCERY_STRONG.search(n) else 'snack'
+    if _NARROW.search(n) and not _GROCERY.search(n):
+        return None
+    return 'mart'
+
+
 def classify(name, code):
     for keyword, category in NAME_RULES:
         if keyword in name:
             return category
-    return CODE_RULES.get(code)
+    category = CODE_RULES.get(code)
+    if category == 'mart':
+        return mart_kind(name)
+    return category
+
+
+def refilter(asset):
+    """원본 zip 없이, 이미 만든 데이터의 마트에 [mart_kind] 규칙만 다시 적용한다.
+
+    대형 매장(L)은 건드리지 않는다. 여러 번 돌려도 결과가 같다.
+    """
+    with gzip.open(asset, 'rt', encoding='utf-8') as f:
+        lines = f.read().splitlines()
+    kept, dropped, snack = [], 0, 0
+    for line in lines:
+        parts = line.split('\t')
+        large = len(parts) > 4 and parts[4] == 'L'
+        if parts[0] == 'mart' and not large:
+            kind = mart_kind(parts[3])
+            if kind is None:
+                dropped += 1
+                continue
+            if kind == 'snack':
+                snack += 1
+                parts[0] = 'snack'
+                line = '\t'.join(parts)
+        kept.append(line)
+    with gzip.open(asset, 'wt', encoding='utf-8', compresslevel=9) as w:
+        w.write('\n'.join(kept) + '\n')
+    print(f'{len(lines):,}건 중 아이스크림·과자 할인점 {snack:,}건, 제외 {dropped:,}건 -> {asset}')
 
 
 def main():
@@ -216,4 +275,7 @@ def merge_extra_stores(asset, extra_paths):
 
 if __name__ == '__main__':
     sys.stdout.reconfigure(encoding='utf-8')
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == '--refilter':
+        refilter(sys.argv[2] if len(sys.argv) > 2 else 'assets/stores.tsv.gz')
+    else:
+        main()

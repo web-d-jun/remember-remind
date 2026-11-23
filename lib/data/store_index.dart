@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import '../core/geo.dart';
+import '../core/store_name.dart';
 import '../models/store.dart';
 import '../models/store_category.dart';
 
@@ -104,7 +105,7 @@ class StoreIndex {
           result.add((
             store: Store(
               id: 'semas:$i',
-              name: _names[i],
+              name: displayStoreName(_names[i], category),
               category: category,
               location: loc,
               large: _large[i] == 1,
