@@ -193,7 +193,11 @@ class LocationTracker extends ChangeNotifier {
     final pending = list.pending;
     final stores =
         nearbyStores
-            .where((s) => ProximityEngine.itemsFor(s, pending).isNotEmpty)
+            // 불확실한 매장은 앱을 깨울 만큼 중요하지 않다. (iOS 지역은 20개뿐)
+            .where(
+              (s) =>
+                  s.certain && ProximityEngine.itemsFor(s, pending).isNotEmpty,
+            )
             .toList()
           ..sort(
             (a, b) => distanceMeters(

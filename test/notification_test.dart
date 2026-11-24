@@ -86,6 +86,28 @@ void main() {
       expect(copy.body, '여기서 우유를 살 수 있어요');
     });
 
+    test('불확실한 매장은 단정하지 않고 "혹시?"로 묻는다', () {
+      const a = Store(
+        id: 'a',
+        name: '행복상회',
+        category: StoreCategory.convenience,
+        location: LatLng(37.5665, 126.9780),
+        certain: false,
+      );
+      const b = Store(
+        id: 'b',
+        name: '이가네',
+        category: StoreCategory.convenience,
+        location: LatLng(37.5665, 126.9780),
+        certain: false,
+      );
+      final copy = NotificationCopy.of(
+        MaybeNearbyEvent(a, [item('우유'), item('젖병솔')], stores: [a, b]),
+      );
+      expect(copy.title, '까악! 혹시 이 근처에…?');
+      expect(copy.body, '우유, 젖병솔을 파는 가게가 있을지도 몰라요 · 행복상회 외 1곳 (확실하진 않아요)');
+    });
+
     group('대형 매장 안에 입점한 매장', () {
       const emart = Store(
         id: 'emart',

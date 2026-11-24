@@ -3,7 +3,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:quick_actions/quick_actions.dart';
 
+import '../core/geo.dart';
+import '../core/proximity_engine.dart';
 import '../models/shopping_item.dart';
+import '../models/store.dart';
 import '../data/photo_store.dart';
 import '../services/location_tracker.dart';
 import '../state/shopping_list.dart';
@@ -137,6 +140,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         children: [
           _InStoreBanner(tracker: tracker, pending: pending),
           _StatusCard(tracker: tracker),
+          _NearbyStores(tracker: tracker, pending: pending),
           if (pending.isEmpty)
             const _EmptyState()
           else
@@ -207,6 +211,85 @@ class _InStoreBanner extends StatelessWidget {
                   ? '여기서 살 건 다 샀어요 👍'
                   : '나가기 전에 꼭: ${items.map((i) => i.name).join(', ')}',
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// 근처에서 살 물건을 살 수 있는 곳. 확실한 곳과 "혹시 있을지도 모르는 곳"을 나눠 보여준다.
+///
+/// 불확실한 매장(이름은 "달콤한솜사탕"인데 업종은 슈퍼마켓 등)을 확실한 것처럼 보이지 않게,
+/// 아래에 따로 "확실하진 않아요"라고 붙인다.
+class _NearbyStores extends StatelessWidget {
+  const _NearbyStores({required this.tracker, required this.pending});
+
+  final LocationTracker tracker;
+  final List<ShoppingItem> pending;
+
+  static const _radius = 500.0;
+  static const _maxPerGroup = 5;
+
+  @override
+  Widget build(BuildContext context) {
+    final here = tracker.lastPosition?.location;
+    if (here == null || pending.isEmpty) return const SizedBox.shrink();
+
+    final rows = <({Store store, double distance, List<ShoppingItem> items})>[];
+    for (final s in tracker.nearbyStores) {
+      final d = distanceMeters(here, s.location);
+      if (d > _radius) continue;
+      final items = ProximityEngine.itemsFor(s, pending);
+      if (items.isNotEmpty) rows.add((store: s, distance: d, items: items));
+    }
+    if (rows.isEmpty) return const SizedBox.shrink();
+    rows.sort((a, b) => a.distance.compareTo(b.distance));
+    final sure = rows.where((r) => r.store.certain).take(_maxPerGroup).toList();
+    final maybe = rows
+        .where((r) => !r.store.certain)
+        .take(_maxPerGroup)
+        .toList();
+    final theme = Theme.of(context);
+
+    Widget tile(({Store store, double distance, List<ShoppingItem> items}) r) =>
+        ListTile(
+          dense: true,
+          title: Text(r.store.name),
+          subtitle: Text(r.items.map((i) => i.name).join(', ')),
+          trailing: Text('${r.distance.round()}m'),
+        );
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (sure.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+                child: Text('근처에서 살 수 있는 곳', style: theme.textTheme.titleSmall),
+              ),
+              for (final r in sure) tile(r),
+            ],
+            if (maybe.isNotEmpty) ...[
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text('혹시 있을지도 몰라요', style: theme.textTheme.titleSmall),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                child: Text(
+                  '업종만 보고 고른 동네 가게예요. 확실하진 않아요.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+              for (final r in maybe) tile(r),
+            ],
           ],
         ),
       ),

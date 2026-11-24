@@ -15,7 +15,7 @@ class StoreIndex {
     this._lat,
     this._lng,
     this._category,
-    this._large,
+    this._flags,
     this._names,
     this._grid,
   );
@@ -23,22 +23,28 @@ class StoreIndex {
   /// 격자 한 칸 크기(도). 위도 0.01도 ≈ 1.1km.
   static const _cell = 0.01;
 
+  static const _largeBit = 1;
+  static const _uncertainBit = 2;
+
   final Int32List _lat; // 위도 x 100000
   final Int32List _lng; // 경도 x 100000
   final Uint8List _category;
-  final Uint8List _large;
+
+  /// 비트 0: 대형 매장(L), 비트 1: 불확실한 매장(U).
+  final Uint8List _flags;
   final List<String> _names;
   final Map<int, Int32List> _grid;
 
   int get length => _names.length;
 
-  /// `카테고리\t위도x1e5\t경도x1e5\t이름[\tL]` 형식의 텍스트를 읽는다.
-  /// 다섯째 칸이 `L`이면 대형 매장이다. 모르는 카테고리나 깨진 줄은 건너뛴다.
+  /// `카테고리\t위도x1e5\t경도x1e5\t이름[\tL|U]` 형식의 텍스트를 읽는다.
+  /// 다섯째 칸이 `L`이면 대형 매장, `U`면 불확실한 매장([Store.certain]이 false)이다.
+  /// 모르는 카테고리나 깨진 줄은 건너뛴다.
   factory StoreIndex.parse(String tsv) {
     final lat = <int>[];
     final lng = <int>[];
     final category = <int>[];
-    final large = <int>[];
+    final flags = <int>[];
     final names = <String>[];
     final byName = {for (final c in StoreCategory.values) c.name: c.index};
 
@@ -57,7 +63,10 @@ class StoreIndex {
       lat.add(la);
       lng.add(ln);
       names.add(parts[3]);
-      large.add(parts.length > 4 && parts[4] == 'L' ? 1 : 0);
+      final flag = parts.length > 4 ? parts[4] : '';
+      flags.add(
+        (flag == 'L' ? _largeBit : 0) | (flag == 'U' ? _uncertainBit : 0),
+      );
     }
 
     final cells = <int, List<int>>{};
@@ -71,7 +80,7 @@ class StoreIndex {
       Int32List.fromList(lat),
       Int32List.fromList(lng),
       Uint8List.fromList(category),
-      Uint8List.fromList(large),
+      Uint8List.fromList(flags),
       names,
       {for (final e in cells.entries) e.key: Int32List.fromList(e.value)},
     );
@@ -108,7 +117,8 @@ class StoreIndex {
               name: displayStoreName(_names[i], category),
               category: category,
               location: loc,
-              large: _large[i] == 1,
+              large: _flags[i] & _largeBit != 0,
+              certain: _flags[i] & _uncertainBit == 0,
             ),
             distance: d,
           ));

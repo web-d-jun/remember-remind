@@ -22,6 +22,16 @@ class ApproachEvent extends ProximityEvent {
   const ApproachEvent(super.store, super.items, {super.tenants});
 }
 
+/// 근처에 그 물건을 팔지도 모르는 불확실한 매장([Store.certain]이 false)들이 있다.
+///
+/// 확실하지 않으니 "여기서 살 수 있어요"라고 단정하지 않고 "혹시 이 근처에…?"라고 묻는다.
+/// [store]는 가장 가까운 곳, [stores]는 가까운 순서로 최대 3곳.
+class MaybeNearbyEvent extends ProximityEvent {
+  const MaybeNearbyEvent(super.store, super.items, {required this.stores});
+
+  final List<Store> stores;
+}
+
 /// 문제 2 해결 (1단계): 매장 안에 들어와 머무르고 있다. 남은 목록을 계속 보여준다.
 class InStoreEvent extends ProximityEvent {
   const InStoreEvent(super.store, super.items, {super.tenants});
@@ -51,6 +61,7 @@ class ProximityConfig {
     this.maxDrift = 40,
     this.largeMaxDrift = 150,
     this.tenantRadius = 30,
+    this.maybeCooldown = const Duration(hours: 2),
   }) : assert(largeInsideRadius <= approachRadius);
 
   /// 이 거리 안에 들어오면 "근처에 있어요" 알림.
@@ -111,6 +122,10 @@ class ProximityConfig {
   /// 찍힌다(전국 대형마트 445곳 중 약국 132곳이 10m, 52곳이 30m 안). 따로 다루면
   /// 근처 알림이 두 번 오고, 마트 안을 돌다 약국 좌표를 지날 때 방문이 바뀌어 버린다.
   final double tenantRadius;
+
+  /// "혹시 이 근처에…?" 알림 재발송 간격. 동네 마트의 대부분이 불확실한 매장이라,
+  /// 확실한 매장 알림보다 훨씬 드물게 보낸다.
+  final Duration maybeCooldown;
 }
 
 typedef _Candidate = ({
@@ -273,7 +288,14 @@ class ProximityEngine {
     //    좌표 40m 안팎을 계속 들락거리기 때문이다.
     if (_small == null) {
       final c = candidates
-          .where((c) => !c.store.large && c.distance <= config.insideRadius)
+          // 불확실한 매장은 매장 안·안 사고 나감 알림을 보내지 않는다. 그 물건이 원래 없는
+          // 가게에서 "까먹지 마, 안 샀어요!"라고 하면 안 되기 때문이다.
+          .where(
+            (c) =>
+                !c.store.large &&
+                c.store.certain &&
+                c.distance <= config.insideRadius,
+          )
           .firstOrNull;
       if (c != null) {
         _small = _Visit(
@@ -296,20 +318,58 @@ class ProximityEngine {
     //    가장 가까운 매장이 이미 알렸으면(쿨다운) 그다음 가까운 매장을 본다.
     //    (편의점 옆 약국처럼 살 물건이 다른 매장을 놓치지 않게)
     //    [오늘은 그만]으로 미뤄둔 물건은 빼고, 남는 게 없으면 알리지 않는다.
-    if (position.speed <= config.maxApproachSpeed) {
-      for (final c in candidates) {
-        final awake = c.items.where((i) => !i.isSnoozed(now)).toList();
-        if (awake.isEmpty || !_canNotifyApproach(c.store, now)) continue;
-        _markApproached(c.store, now);
-        // 입점 매장도 이미 알린 걸로 친다. (같은 종류 매장 쿨다운에도 반영)
-        for (final t in c.tenants) {
-          _markApproached(t, now);
-        }
-        events.add(ApproachEvent(c.store, awake, tenants: c.tenants));
-        break;
+    if (position.speed > config.maxApproachSpeed) return events;
+    for (final c in candidates) {
+      if (!c.store.certain) continue;
+      final awake = c.items.where((i) => !i.isSnoozed(now)).toList();
+      if (awake.isEmpty || !_canNotifyApproach(c.store, now)) continue;
+      _markApproached(c.store, now);
+      // 입점 매장도 이미 알린 걸로 친다. (같은 종류 매장 쿨다운에도 반영)
+      for (final t in c.tenants) {
+        _markApproached(t, now);
+      }
+      events.add(ApproachEvent(c.store, awake, tenants: c.tenants));
+      return events;
+    }
+
+    // 7) 불확실한 매장만 있는 물건은 "혹시 이 근처에…?"라고 조용히, 드물게 묻는다.
+    //    근처 확실한 매장에서 살 수 있는 물건은 빼고, 남는 게 없으면 묻지 않는다.
+    final maybe = _maybeNearby(candidates, now);
+    if (maybe != null) events.add(maybe);
+    return events;
+  }
+
+  DateTime? _lastMaybe;
+
+  MaybeNearbyEvent? _maybeNearby(List<_Candidate> candidates, DateTime now) {
+    final last = _lastMaybe;
+    if (last != null && now.difference(last) < config.maybeCooldown) {
+      return null;
+    }
+    final covered = {
+      for (final c in candidates)
+        if (c.store.certain) ...c.items,
+    };
+    final stores = <Store>[];
+    final items = <ShoppingItem>[];
+    for (final c in candidates) {
+      if (c.store.certain) continue;
+      final rest = c.items
+          .where((i) => !i.isSnoozed(now) && !covered.contains(i))
+          .toList();
+      if (rest.isEmpty) continue;
+      stores.add(c.store);
+      for (final i in rest) {
+        if (!items.contains(i)) items.add(i);
       }
     }
-    return events;
+    if (stores.isEmpty) return null;
+    _lastMaybe = now;
+    return MaybeNearbyEvent(
+      stores.first,
+      items,
+      stores: stores.take(3).toList(),
+    );
   }
 
   /// 체류 시간이 찼으면 방문을 확정하고 남은 목록을 알린다. 확정했으면 true.

@@ -26,6 +26,7 @@ class NotificationService {
 
   static const _inStoreId = 2000;
   static const _forgotId = 3000;
+  static const _maybeId = 4000;
 
   // iOS는 버튼 묶음(category)을 미리 등록해 두고 알림마다 이름으로 고른다.
   static const _approachCategory = 'approach';
@@ -156,6 +157,30 @@ class NotificationService {
                   : _approachMultiCategory,
               interruptionLevel: InterruptionLevel.active,
               attachments: photo?.ios,
+            ),
+          ),
+        );
+      case MaybeNearbyEvent(:final items):
+        // 확실하지 않은 정보라 소리 없이 조용히 알린다. 누르면 앱에서 근처 매장 목록을 본다.
+        final copy = NotificationCopy.of(event);
+        await _plugin.show(
+          id: _maybeId,
+          title: copy.title,
+          body: copy.body,
+          payload: encodeItemIds(items),
+          notificationDetails: NotificationDetails(
+            android: AndroidNotificationDetails(
+              'maybe',
+              '혹시 있을지도 모르는 곳',
+              channelDescription: '살 물건을 팔지도 모르는 가게가 근처에 있을 때 조용히 알려요',
+              importance: Importance.low,
+              priority: Priority.low,
+              styleInformation: BigTextStyleInformation(copy.body),
+              actions: [_snoozeAndroid],
+            ),
+            iOS: const DarwinNotificationDetails(
+              categoryIdentifier: _approachMultiCategory,
+              interruptionLevel: InterruptionLevel.passive,
             ),
           ),
         );

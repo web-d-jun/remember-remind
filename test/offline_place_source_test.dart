@@ -17,7 +17,10 @@ void main() {
       radiusMeters: 500,
     );
     expect(stores, isNotEmpty);
-    expect(stores.every((s) => s.category == StoreCategory.convenience), isTrue);
+    expect(
+      stores.every((s) => s.category == StoreCategory.convenience),
+      isTrue,
+    );
   });
 
   test('아이스크림 할인점은 마트가 아니라 아이스크림·과자 할인점으로 찾는다', () async {

@@ -517,4 +517,73 @@ void main() {
       expect((events.first as ApproachEvent).tenants, isEmpty);
     });
   });
+
+  group('불확실한 매장 (이름은 달콤한솜사탕인데 업종은 슈퍼마켓 같은 곳)', () {
+    final unsure = Store(
+      id: 'unsure',
+      name: '행복상회',
+      category: StoreCategory.mart,
+      location: origin,
+      certain: false,
+    );
+    final unsure2 = Store(
+      id: 'unsure2',
+      name: '이가네',
+      category: StoreCategory.mart,
+      location: north(origin, 60),
+      certain: false,
+    );
+    final bottleBrush = item('젖병솔', {StoreCategory.mart, StoreCategory.daiso});
+
+    setUp(() => pending = [milk, bottleBrush]);
+
+    test('"여기서 살 수 있어요"가 아니라 "혹시?"로 묻고, 근처 몇 곳을 함께 알려준다', () {
+      final events = at(100, Duration.zero, stores: [unsure, unsure2]);
+      final maybe = events.single as MaybeNearbyEvent;
+      expect(maybe.items, [milk, bottleBrush]);
+      expect(maybe.stores, [unsure2, unsure]);
+      expect(events.whereType<ApproachEvent>(), isEmpty);
+    });
+
+    test('근처 확실한 매장에서 살 수 있는 물건은 "혹시?"에서 뺀다', () {
+      // GS25(확실)는 우유를 팔고, 젖병솔은 동네 가게(불확실)만 팔지도 모른다.
+      final events = [
+        ...at(100, Duration.zero, stores: [gs25, unsure2]),
+        ...at(100, const Duration(seconds: 15), stores: [gs25, unsure2]),
+      ];
+      expect(events.first, isA<ApproachEvent>());
+      expect(events.first.items, [milk]);
+      final maybe = events.whereType<MaybeNearbyEvent>().single;
+      expect(maybe.items, [bottleBrush]);
+    });
+
+    test('확실한 매장에서 모두 살 수 있으면 "혹시?"를 묻지 않는다', () {
+      pending = [milk];
+      final events = [
+        ...at(100, Duration.zero, stores: [gs25, unsure2]),
+        ...at(100, const Duration(seconds: 15), stores: [gs25, unsure2]),
+      ];
+      expect(events.whereType<MaybeNearbyEvent>(), isEmpty);
+    });
+
+    test('"혹시?"는 2시간에 한 번만 묻는다', () {
+      expect(at(100, Duration.zero, stores: [unsure]), hasLength(1));
+      expect(at(100, const Duration(minutes: 30), stores: [unsure]), isEmpty);
+      expect(
+        at(100, const Duration(hours: 2, minutes: 1), stores: [unsure]),
+        hasLength(1),
+      );
+    });
+
+    test('불확실한 매장에 오래 있다가 나가도 "안 샀어요"라고 하지 않는다', () {
+      final events = <ProximityEvent>[];
+      for (var s = 0; s <= 300; s += 15) {
+        events.addAll(at(5, Duration(seconds: s), stores: [unsure]));
+      }
+      events.addAll(at(300, const Duration(minutes: 10), stores: [unsure]));
+      expect(events.whereType<InStoreEvent>(), isEmpty);
+      expect(events.whereType<LeftStoreEvent>(), isEmpty);
+      expect(engine.currentStore, isNull);
+    });
+  });
 }

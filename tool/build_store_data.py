@@ -7,8 +7,9 @@
 데이터: https://www.data.go.kr/data/15083033/fileData.do (분기별 갱신, 이용허락범위 제한 없음)
 
 출력 형식 (gzip으로 압축한 TSV, 한 줄에 매장 하나):
-    카테고리<TAB>위도x100000<TAB>경도x100000<TAB>이름[<TAB>L]
-    (다섯째 칸 L은 대형 매장. fetch_large_stores.py 로 합친 대형마트에 붙는다)
+    카테고리<TAB>위도x100000<TAB>경도x100000<TAB>이름[<TAB>L|U]
+    (다섯째 칸 L은 대형 매장. fetch_large_stores.py 로 합친 대형마트에 붙는다.
+     U는 그 종류 물건을 파는지 확실하지 않은 매장. [is_certain] 참고)
 카테고리 이름은 lib/models/store_category.dart 의 enum 이름과 같아야 한다.
 """
 
@@ -47,26 +48,104 @@ CODE_RULES = {
 #    못 찾는다. 이름에 "마트/마켓"이 있어도 대부분 같은 가게라, 슈퍼·편의점·하나로처럼
 #    확실히 장 보는 곳일 때만 마트로 남긴다.
 # 2) 빵집·방앗간·정육점·담배 가게 등: 파는 물건이 제각각이라 뺀다.
-_SNACK = re.compile(r'아이스|과자|스낵|간식|캔디|젤리')
+# 3) GS25·CU 같은 편의점이 슈퍼마켓 코드로 등록된 것: 편의점으로 옮긴다.
+# 4) 주유소·페인트 가게·캠프장처럼 식료품을 안 파는 게 분명한 이름은 뺀다.
+#    슈퍼마켓 코드 약 5만 8천 곳 중 절반은 이름에 장 보는 가게라는 단서가 없다.
+#    ("달콤한솜사탕"에서 "젖병솔, 우유를 살 수 있어요"라고 알렸다)
+# 5) 남은 가게 중 브랜드 마트·"슈퍼"가 아닌 곳은 "불확실"(U)로 표시한다.
+#    앱은 불확실한 매장을 "여기서 살 수 있어요"라고 단정하지 않고
+#    "혹시 이 근처에…? (확실하진 않아요)"라고 조용히 알리며, 매장 안·안 사고 나감 알림은 보내지 않는다.
+_SNACK = re.compile(r'아이스|과자|스낵|간식|캔디|젤리|사탕')
+_CONVENIENCE = re.compile(
+    r'^(지에스(?!\s*더\s*프레시|\s*마트)|GS\s*25|씨유|CU(?![A-Za-z])|비지에프|코리아세븐|'
+    r'세븐\s*일레븐|이마트\s*24|미니스톱)', re.I)
 _NARROW = re.compile(r'빵|분식|키즈카페|놀이터|쿠키|떡|디저트|커피|와인|주류|담배|'
                      r'홍삼|건강원|방앗간|정육|축산|수산|건어물|청과|과일|반찬|펫|반려')
 _GROCERY_STRONG = re.compile(r'슈퍼|편의점|하나로|농협|식자재|상회|연쇄점')
 _GROCERY = re.compile(r'마트|마켓|상점|생협|한살림|두레|아이쿱|자연드림|종합|'
                       + _GROCERY_STRONG.pattern)
+# 장 보는 가게라는 근거. 하나도 없으면 마트로 두지 않는다. (4)
+_GROCERY_EVIDENCE = re.compile(
+    _GROCERY.pattern
+    + r'|수퍼|식품|축협|수협|상사|로컬푸드|할인점|가게|매점|구판장|스토어|유통|24시|２４|'
+      r'더프레시|익스프레스|에브리데이|노브랜드|쿱|초록마을|트레이더스|농산|'
+      r'super|mart|market|store', re.I)
+# 식료품을 안 파는 게 분명한 가게. 장 보는 가게라는 근거가 없을 때만 뺀다. (4)
+# ("OO주유소 매점"처럼 근거가 있으면 남긴다)
+_NOT_GROCERY = re.compile(
+    r'주유소|충전소|페인트|수예|캠프|캠핑|기획|컴퍼니|산업|물류|해운|낚시|구두|자판기|'
+    r'인테리어|건설|건축|철물|공업|전자|컴퓨터|모바일|통신|부동산|세탁|미용|헤어|네일|'
+    r'화원|플라워|안경|의류|패션|스튜디오|여행|산장|펜션|민박|호텔|모텔|식당|밥상|바베큐|'
+    r'치킨|피자|카페|학원|아울렛|인삼|트레이딩|씨앤씨|인사이트|그룹|업소명없음|'
+    # 건축·인테리어·간판 가게. ("공구"는 공동구매 식품 가게("맛있는공구")가 많아 넣지 않는다)
+    r'철물|건재|전기|설비|타일|도기|간판|광고|인쇄|여인숙')
+
+# 거의 모든 생필품을 파는 마트. 이 밖의 마트는 불확실(U)로 둔다. (5)
+# "이마트"는 "제이마트"·"케이마트"에 걸리지 않게 앞에 한글이 없을 때만 본다.
+_CERTAIN_MART = re.compile(
+    r'(^|[^가-힣])이마트|홈플러스|롯데마트|롯데슈퍼|GS더프레시|지에스더프레시|노브랜드|'
+    r'하나로|농협|축협|수협|코스트코|트레이더스|메가마트|탑마트|킴스클럽|식자재|초록마을|'
+    r'한살림|생협|아이쿱|자연드림|두레|올가|세이브존|슈퍼|수퍼', re.I)
+_CONVENIENCE_CHAIN = re.compile(
+    r'^(\(주\)|㈜)?\s*(GS\s*25|지에스|씨유|CU(?![A-Za-z])|비지에프|세븐\s*일레븐|코리아세븐|'
+    r'세븐|이마트\s*24|미니스톱|한국미니스톱|스토리웨이|위드미)', re.I)
 
 
 def mart_kind(name):
-    """슈퍼마켓 코드로 등록된 가게를 다시 나눈다. 'mart', 'snack', 또는 None(뺀다).
+    """슈퍼마켓 코드로 등록된 가게를 다시 나눈다.
+
+    'mart', 'snack', 'convenience', 또는 None(뺀다).
 
     '더샵아이스크림할인점' -> 'snack', '아이스크림할인마트' -> 'snack',
-    '대한방앗간' -> None, '현산청과슈퍼' -> 'mart', '농축산하나로마트' -> 'mart'
+    '대한방앗간' -> None, '현산청과슈퍼' -> 'mart', '농축산하나로마트' -> 'mart',
+    '달콤한솜사탕' -> 'snack', '서울이엔지일월주유소' -> None,
+    '지에스25울산대왕암점' -> 'convenience', '지에스더프레시충주 용산점' -> 'mart',
+    '이가네' -> 'mart' (불확실)
     """
     n = name.replace(' ', '')
+    if _CONVENIENCE.search(n):
+        return 'convenience'
     if _SNACK.search(n):
         return 'mart' if _GROCERY_STRONG.search(n) else 'snack'
     if _NARROW.search(n) and not _GROCERY.search(n):
         return None
+    if _NOT_GROCERY.search(n) and not _strong_evidence(n):
+        return None
     return 'mart'
+
+
+# "종합"·"상사"는 어느 업종에나 붙어("대박종합설비", "강남타일도기상사") 근거로 약하다.
+_WEAK_EVIDENCE = re.compile(r'종합|상사')
+
+
+def _strong_evidence(n):
+    """[_NOT_GROCERY]에 걸린 이름을 그래도 남길 만큼 장 보는 가게라는 근거가 있는지."""
+    return bool(_GROCERY_EVIDENCE.search(_WEAK_EVIDENCE.sub('', n)))
+
+
+def convenience_ok(name):
+    """편의점 코드로 등록된 가게를 남길지. 체인이 아니고 식료품을 안 파는 게 분명하면 뺀다.
+
+    '미미전기' -> False, '칼라힐편의점' -> True, '씨유안양노루페인트점' -> True
+    """
+    n = name.replace(' ', '')
+    if _CONVENIENCE_CHAIN.search(n) or _strong_evidence(n):
+        return True
+    return not _NOT_GROCERY.search(n)
+
+
+def is_certain(category, name):
+    """그 종류의 물건을 거의 확실히 파는 매장인지. 아니면 데이터에 U를 붙인다. (5)
+
+    약국·다이소·올리브영·문구점·과자 할인점은 업종이 곧 파는 물건이라 확실하다.
+    마트는 브랜드 마트와 "슈퍼"만, 편의점은 체인만 확실하다.
+    """
+    n = name.replace(' ', '')
+    if category == 'mart':
+        return bool(_CERTAIN_MART.search(n))
+    if category == 'convenience':
+        return bool(_CONVENIENCE_CHAIN.search(n))
+    return True
 
 
 def classify(name, code):
@@ -76,33 +155,52 @@ def classify(name, code):
     category = CODE_RULES.get(code)
     if category == 'mart':
         return mart_kind(name)
+    if category == 'convenience' and not convenience_ok(name):
+        return None
     return category
 
 
+def store_line(category, lat, lng, name, large=False):
+    """데이터 한 줄. 다섯째 칸: L 대형 매장, U 불확실한 매장, 없으면 확실한 일반 매장."""
+    flag = 'L' if large else '' if is_certain(category, name) else 'U'
+    return f'{category}\t{lat}\t{lng}\t{name}' + (f'\t{flag}' if flag else '')
+
+
 def refilter(asset):
-    """원본 zip 없이, 이미 만든 데이터의 마트에 [mart_kind] 규칙만 다시 적용한다.
+    """원본 zip 없이, 이미 만든 데이터에 [mart_kind]·[is_certain] 규칙만 다시 적용한다.
 
     대형 매장(L)은 건드리지 않는다. 여러 번 돌려도 결과가 같다.
     """
     with gzip.open(asset, 'rt', encoding='utf-8') as f:
         lines = f.read().splitlines()
-    kept, dropped, snack = [], 0, 0
+    kept, dropped, moved = [], 0, collections.Counter()
     for line in lines:
         parts = line.split('\t')
-        large = len(parts) > 4 and parts[4] == 'L'
-        if parts[0] == 'mart' and not large:
-            kind = mart_kind(parts[3])
+        if len(parts) < 4:
+            continue
+        if len(parts) > 4 and parts[4] == 'L':
+            kept.append(line)
+            continue
+        category, name = parts[0], parts[3]
+        if category == 'convenience' and not convenience_ok(name):
+            dropped += 1
+            continue
+        if category == 'mart':
+            kind = mart_kind(name)
             if kind is None:
                 dropped += 1
                 continue
-            if kind == 'snack':
-                snack += 1
-                parts[0] = 'snack'
-                line = '\t'.join(parts)
-        kept.append(line)
-    with gzip.open(asset, 'wt', encoding='utf-8', compresslevel=9) as w:
+            if kind != 'mart':
+                moved[kind] += 1
+            category = kind
+        kept.append(store_line(category, parts[1], parts[2], name))
+    with gzip.GzipFile(asset, 'wb', compresslevel=9, mtime=0) as raw, \
+            io.TextIOWrapper(raw, encoding='utf-8', newline='\n') as w:
         w.write('\n'.join(kept) + '\n')
-    print(f'{len(lines):,}건 중 아이스크림·과자 할인점 {snack:,}건, 제외 {dropped:,}건 -> {asset}')
+    uncertain = sum(1 for k in kept if k.endswith('\tU'))
+    print(f'{len(lines):,}건 중 아이스크림·과자 할인점으로 {moved["snack"]:,}건, '
+          f'편의점으로 {moved["convenience"]:,}건 옮김, 제외 {dropped:,}건, '
+          f'불확실(U) {uncertain:,}건 -> {asset}')
 
 
 def main():
@@ -136,7 +234,7 @@ def main():
                     branch = row[cols['지점명']].strip()
                     label = f'{name} {branch}' if branch else name
                     label = label.replace('\t', ' ').replace('\n', ' ')
-                    w.write(f'{category}\t{lat}\t{lng}\t{label}\n')
+                    w.write(store_line(category, lat, lng, label) + '\n')
                     counts[category] += 1
 
     print(f'전체 {rows:,}건 중 {sum(counts.values()):,}건 추출 -> {out}')

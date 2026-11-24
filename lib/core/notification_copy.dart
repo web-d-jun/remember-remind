@@ -26,6 +26,16 @@ class NotificationCopy {
           '여기서 $names${josa(names, '을', '를')} 살 수 있어요'
               '${inside.isEmpty ? '' : ' (안에 $inside${josa(inside, '이', '가')} 있어요)'}',
         );
+      case MaybeNearbyEvent(:final stores):
+        // 확실하지 않으니 단정하지 않는다. "여기서 살 수 있어요"가 아니라 "있을지도 몰라요".
+        final where = stores.length == 1
+            ? stores.first.name
+            : '${stores.first.name} 외 ${stores.length - 1}곳';
+        return NotificationCopy(
+          '까악! 혹시 이 근처에…?',
+          '$names${josa(names, '을', '를')} 파는 가게가 있을지도 몰라요 · '
+              '$where (확실하진 않아요)',
+        );
       case InStoreEvent():
         return inStore(event.store, items, event.tenants);
       case LeftStoreEvent():
